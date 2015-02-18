@@ -1,0 +1,77 @@
+#!/usr/bin/env python3
+'''
+python3-gst-1.0
+python3-pil
+libgstreamer1.0
+gstreamer1.0-plugins-{good,bad,ugly}
+gstreamer1.0-libav
+gstreamer1.0-fluendo-mp3
+gstreamer1.0-nice
+'''
+import os
+import sys
+
+from io import BytesIO
+from PIL import Image
+
+import gi
+gi.require_version('Gst', '1.0')
+from gi.repository import Gst
+Gst.init(None)
+
+def get_frame(pipeline, offset, caps=Gst.Caps.from_string('image/png')):
+	pipeline.seek_simple(Gst.Format.TIME, Gst.SeekFlags.FLUSH, offset * Gst.SECOND)
+	pipeline.get_state(Gst.CLOCK_TIME_NONE)
+	buffer = pipeline.emit('convert-sample', caps).get_buffer()
+	pipeline.set_state(Gst.State.PAUSED)
+	return buffer.extract_dup(0, buffer.get_size())
+
+
+def get_frames(path, amount):
+	frames = []
+	pipeline = Gst.parse_launch('playbin')
+	pipeline.props.uri = 'file://' + os.path.abspath(path)
+	pipeline.props.audio_sink = Gst.ElementFactory.make('fakesink', 'fakeaudio')
+	pipeline.props.video_sink = Gst.ElementFactory.make('fakesink', 'fakevideo')
+	pipeline.set_state(Gst.State.PAUSED)
+	pipeline.get_state(Gst.CLOCK_TIME_NONE)
+	ret, length = pipeline.query_duration(Gst.Format.TIME)
+	for i in range(amount):
+		offset = (((length / Gst.SECOND) - 1) / amount) * i
+		frames += [get_frame(pipeline, offset)]
+	pipeline.set_state(Gst.State.NULL)
+	return frames
+
+
+def generate_montage(frames, row_size=4, margin=3):
+	images = [Image.open(BytesIO(rawImage)) for rawImage in frames]
+	width = max(image.size[0] + margin for image in images)*row_size
+	height = sum(image.size[1] + margin for image in images)
+	montage = Image.new(mode='RGB', size=(width, height), color=(0,0,0))
+
+	max_x = 0
+	max_y = 0
+	offset_x = 0
+	offset_y = 0
+	for i,image in enumerate(images):
+		montage.paste(image, (offset_x, offset_y))
+
+		max_x = max(max_x, offset_x + image.size[0])
+		max_y = max(max_y, offset_y + image.size[1])
+
+		if i % row_size == row_size-1:
+			offset_y = max_y + margin
+			offset_x = 0
+		else:
+			offset_x += margin + image.size[0]
+
+	return montage.crop((0, 0, max_x, max_y))
+
+
+def main():
+	frames = get_frames(sys.argv[1], int(sys.argv[2]))
+	generate_montage(frames).save(os.path.splitext(sys.argv[1])[0] + '.png')
+
+
+if __name__ == '__main__':
+	main()
