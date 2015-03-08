@@ -70,10 +70,12 @@ def main():
 	parser.add_argument('-n', '--num-frames', default=24, help='Number of frames.  Default: 24')
 	args = parser.parse_args()
 
-	frames = get_frames(args.input, args.num_frames)
-	montage = generate_montage(frames, args.num_columns, args.margin)
 	output_path = args.output_dir if args.output_dir else os.path.dirname(args.input)
-	montage.save(output_path + os.path.sep + os.path.splitext(os.path.basename(args.input))[0] + '.' + args.format)
+	output_file = output_path + os.path.sep + os.path.splitext(os.path.basename(args.input))[0] + '.' + args.format
+	if not os.path.exists(output_file):
+		frames = get_frames(args.input, args.num_frames)
+		montage = generate_montage(frames, args.num_columns, args.margin)
+		montage.save(output_file)
 
 
 if __name__ == '__main__':
